@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>校园人格星盘 · 大五人格 + 深度调研</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(145deg, #f7f9fc 0%, #eef2f7 100%);
+            color: #1e2a3e;
+            padding: 2rem 1rem;
+        }
+        .container { max-width: 1280px; margin: 0 auto; }
+        .hero { text-align: center; margin-bottom: 2rem; }
+        .hero h1 { font-size: 2.4rem; background: linear-gradient(135deg, #1e3c72, #2a5298); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .card {
+            background: rgba(255,255,255,0.94);
+            backdrop-filter: blur(2px);
+            border-radius: 32px;
+            box-shadow: 0 20px 35px -12px rgba(0,0,0,0.1);
+            padding: 1.8rem;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(255,255,255,0.5);
+        }
+        .questions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px,1fr)); gap: 1.2rem; margin: 1rem 0; }
+        .question-item { background: white; border-radius: 24px; padding: 1rem 1.2rem; box-shadow: 0 4px 12px rgba(0,0,0,0.03); border: 1px solid #e9edf2; }
+        .question-text { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.7rem; }
+        .likert { display: flex; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+        .likert label { flex: 1; text-align: center; font-size: 0.75rem; font-weight: 500; cursor: pointer; }
+        .likert input { display: none; }
+        .likert span { display: inline-block; width: 100%; background: #f1f4f9; border-radius: 40px; padding: 6px 0; transition: 0.1s; }
+        .likert input:checked + span { background: #2a6f8f; color: white; font-weight: bold; box-shadow: 0 4px 8px rgba(42,111,143,0.3); }
+        .survey-options { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+        .opt-btn { background: #f1f4f9; border-radius: 40px; padding: 8px 18px; font-size: 0.85rem; cursor: pointer; transition: 0.1s; border: 1px solid transparent; }
+        .opt-btn.selected { background: #2a6f8f; color: white; border-color: #2a6f8f; box-shadow: 0 2px 8px rgba(42,111,143,0.3); }
+        .mbti-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+        .mbti-opt { background: white; border: 2px solid #cbd5e1; border-radius: 60px; padding: 6px 20px; font-weight: 600; cursor: pointer; }
+        .mbti-opt.selected { background: #2a5298; border-color: #2a5298; color: white; }
+        .btn { background: #1e3c72; border: none; color: white; font-weight: 600; padding: 12px 28px; border-radius: 40px; cursor: pointer; transition: 0.2s; }
+        .btn-primary { background: linear-gradient(100deg, #2c5a8c, #1e3c72); box-shadow: 0 4px 8px rgba(0,0,0,0.05); }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 20px rgba(0,0,0,0.1); }
+        .result-card { background: linear-gradient(115deg, #fff9f0 0%, #fff5e6 100%); border-left: 8px solid #ffb347; }
+        .type-title { font-size: 2rem; font-weight: 800; margin-bottom: 0.5rem; }
+        .stats-panel { display: flex; flex-wrap: wrap; gap: 2rem; justify-content: space-between; }
+        footer { text-align: center; font-size: 0.75rem; color: #6c7a8e; margin-top: 2rem; }
+        @media (max-width: 680px) { .hero h1 { font-size: 1.8rem; } .questions-grid { grid-template-columns: 1fr; } }
+        .loading { text-align: center; padding: 1rem; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="hero">
+        <h1><i class="fas fa-brain"></i> 校园人格星盘 · 深度研究版</h1>
+        <p>40题大五人格 + 7项校园心理调查 | 数据实时匿名存入云端</p>
+    </div>
+
+    <!-- 大五问卷卡片 -->
+    <div class="card">
+        <h3><i class="fas fa-clipboard-list"></i> 第一部分：人格特质评估（每题按符合程度选择）</h3>
+        <div id="questionsContainer" class="questions-grid"></div>
+    </div>
+
+    <!-- 新增 7 道调查题（全部选择题，不计分） -->
+    <div class="card">
+        <h3><i class="fas fa-poll"></i> 第二部分：校园人格调查（不计分，用于群体分析）</h3>
+        <div id="surveyContainer"></div>
+    </div>
+
+    <div style="display: flex; justify-content: center; margin: 20px 0;">
+        <button class="btn btn-primary" id="submitBtn"><i class="fas fa-chart-line"></i> 提交 & 生成人格报告</button>
+    </div>
+
+    <!-- 报告展示区 -->
+    <div id="reportArea" style="display: none;"></div>
+
+    <!-- 多人统计看板 -->
+    <div class="card">
+        <h3><i class="fas fa-globe"></i> 🌍 校园人格大数据看板</h3>
+        <div id="statsContent" class="stats-panel"><div class="loading"><i class="fas fa-spinner fa-pulse"></i> 加载统计数据中...</div></div>
+    </div>
+    <footer>📊 所有结果匿名存储于Firebase，支持实时统计 | 基于大五人格理论</footer>
+</div>
+
+<script>
+    // ---------- 大五40题题库 (保持不变) ----------
+    const QUESTIONS = [
+        { id:1, text:"我喜欢周围有很多朋友", dim:"E", direct:"正" },{ id:2, text:"我很喜欢沉浸于幻想和白日梦中，去探索、发展自我", dim:"O", direct:"正" },
+        { id:3, text:"我尽量对每一个遇到的人彬彬有礼，非常客气", dim:"A", direct:"正" },{ id:4, text:"我让自己的物品经常保持整洁干净", dim:"C", direct:"正" },
+        { id:5, text:"有时候我感到愤怒，充满怨恨", dim:"N", direct:"正" },{ id:6, text:"有时候我会采用威胁或奉承等不同手段，去说服别人", dim:"A", direct:"反" },
+        { id:7, text:"我比较擅长为自己安排好做事进度，以便按时完成", dim:"C", direct:"正" },{ id:8, text:"当面对极大的压力时，有时我会感到好像就要垮了", dim:"N", direct:"正" },
+        { id:9, text:"我对大自然和艺术中蕴涵的美十分着迷", dim:"O", direct:"正" },{ id:10, text:"有些人觉得我有些自我中心，不太考虑别人的感受", dim:"A", direct:"反" },
+        { id:11, text:"许多时候，事到临头了，我才发现自己还没做好准备", dim:"C", direct:"反" },{ id:12, text:"我很喜欢与别人聊天", dim:"E", direct:"正" },
+        { id:13, text:"我认为让学生接触有争议的学说或言论，只会混淆视听", dim:"O", direct:"反" },{ id:14, text:"如果有人挑起争端，我随时准备好反击", dim:"A", direct:"反" },
+        { id:15, text:"我经常感到紧张而心神不定", dim:"N", direct:"正" },{ id:16, text:"我喜欢置身于激烈的活动之中", dim:"E", direct:"正" },
+        { id:17, text:"我对诗词基本上没有什么感觉", dim:"O", direct:"反" },{ id:18, text:"我觉得自己比大多数的人都优秀", dim:"A", direct:"反" },
+        { id:19, text:"我有一些明确的目标，并能以有条不紊的方式朝着目标前进", dim:"C", direct:"正" },{ id:20, text:"我通常回避人多的场合", dim:"E", direct:"反" },
+        { id:21, text:"对我来说，让头脑无拘无束地想象是一件困难的事情", dim:"O", direct:"反" },{ id:22, text:"开始着手学习或工作之前，我会浪费很多时间", dim:"C", direct:"反" },
+        { id:23, text:"我很少感到恐惧或焦虑", dim:"N", direct:"反" },{ id:24, text:"我常常感到自己精力旺盛，好像充满能量", dim:"E", direct:"正" },
+        { id:25, text:"我相信人是善良的", dim:"A", direct:"正" },{ id:26, text:"别人对待我的方式常使我感到愤怒", dim:"N", direct:"正" },
+        { id:27, text:"我是一个乐天开朗的人", dim:"E", direct:"正" },{ id:28, text:"很多人觉得我对人有些冷淡，经常和别人保持一定的距离", dim:"E", direct:"反" },
+        { id:29, text:"一旦做出承诺，我通常会贯彻到底", dim:"C", direct:"正" },{ id:30, text:"我不太喜欢和人聊天，很少从中获得太多乐趣", dim:"E", direct:"反" },
+        { id:31, text:"阅读一首诗或欣赏一件艺术品时，我有时会感到心旷神怡", dim:"O", direct:"正" },{ id:32, text:"我很少感觉到忧伤或沮丧", dim:"N", direct:"反" },
+        { id:33, text:"我对思考宇宙规律或人类生存状况没有什么兴趣", dim:"O", direct:"反" },{ id:34, text:"我经常感觉无助，希望有人能帮助我解决问题", dim:"N", direct:"正" },
+        { id:35, text:"我好像总不能把事情安排得井井有条", dim:"C", direct:"反" },{ id:36, text:"有时我会感到十分羞愧，以至于只想躲起来，不再与人交流", dim:"N", direct:"正" },
+        { id:37, text:"我宁愿自己独自做事，而不是领导指挥别人", dim:"E", direct:"反" },{ id:38, text:"我喜欢研究理论和抽象的问题", dim:"O", direct:"正" },
+        { id:39, text:"如果有必要的话，我会利用别人来达到自己的目的", dim:"A", direct:"反" },{ id:40, text:"对于每件事，我都力求做到最好", dim:"C", direct:"正" }
+    ];
+
+    // 维度界限
+    const BOUNDS = { N:{ lowMax:19, highMin:29, maxScore:40 }, E:{ lowMax:21, highMin:33, maxScore:45 }, O:{ lowMax:19, highMin:29, maxScore:40 }, A:{ lowMax:16, highMin:26, maxScore:35 }, C:{ lowMax:19, highMin:29, maxScore:40 } };
+    const PERSONALITY_TYPES = [
+        { name:"🌞 校园阿波罗", desc:"热情开朗，情绪稳定，待人友善，团队中的阳光人物。", img:"fas fa-sun", traits:{ E:"高", N:"低", A:"高", C:"中", O:"中" } },
+        { name:"🚫 回避型全自动食堂", desc:"容易紧张担忧，偏爱独处，回避热闹，想法保守敏感。", img:"fas fa-utensils", traits:{ N:"高", E:"低", A:"中", C:"中", O:"低" } },
+        { name:"⚓ 校园哥伦布", desc:"充满求知欲和想象力，喜爱艺术与哲学，灵活多变。", img:"fas fa-ship", traits:{ O:"高", N:"中", E:"中", A:"中", C:"中" } },
+        { name:"📜 老资历卷王", desc:"做事极有条理，目标明确，情绪稳定，偏好传统。", img:"fas fa-scroll", traits:{ C:"高", N:"低", O:"低", E:"中", A:"中" } },
+        { name:"🤝 好人", desc:"温和体贴，乐于助人，人缘极好，心态乐观。", img:"fas fa-heart", traits:{ A:"高", E:"高", N:"低", C:"中", O:"中" } },
+        { name:"🐺 校园孤狼", desc:"喜欢独处，保持距离，做事认真可靠，偶尔忧郁。", img:"fas fa-wolf-pack-battalion", traits:{ E:"低", N:"中", A:"低", C:"高", O:"低" } },
+        { name:"🍃 没招了淡人", desc:"情绪极其稳定，遇事冷静，不卑不亢，定海神针。", img:"fas fa-leaf", traits:{ N:"低", E:"中", A:"中", C:"中", O:"中" } },
+        { name:"🎨 DDL的艺术家", desc:"富有创造力，情绪敏感，沉浸幻想，做事随性。", img:"fas fa-palette", traits:{ O:"高", N:"高", E:"低", A:"中", C:"低" } },
+        { name:"👑 校园摄政王", desc:"自信甚至自负，喜欢领导，高效强势，善于社交。", img:"fas fa-crown", traits:{ A:"低", E:"高", C:"高", N:"低", O:"中" } },
+        { name:"🏛️ 老辈子", desc:"尊重传统，认真守规矩，安静礼貌，适合耐心职业。", img:"fas fa-landmark", traits:{ O:"低", C:"高", N:"中", E:"低", A:"高" } }
+    ];
+
+    function getLevel(score, dim) { let b = BOUNDS[dim]; if(score <= b.lowMax) return "低"; if(score >= b.highMin) return "高"; return "中"; }
+    function matchPersonality(levels) { let best = PERSONALITY_TYPES[0], bestDiff = 100; for(let t of PERSONALITY_TYPES) { let diff=0; for(let d of ['N','E','O','A','C']) if(t.traits[d] !== levels[d]) diff++; if(diff<bestDiff) { bestDiff=diff; best=t; } } return best; }
+    function reverseScore(s) { return 6-s; }
+
+    // 渲染大五题目
+    function renderQuestions() {
+        let container = document.getElementById("questionsContainer");
+        container.innerHTML = "";
+        QUESTIONS.forEach((q, idx) => {
+            let div = document.createElement("div"); div.className = "question-item";
+            div.innerHTML = `<div class="question-text">${idx+1}. ${q.text}</div><div class="likert">`+
+                [1,2,3,4,5].map(v=>`<label><input type="radio" name="q${q.id}" value="${v}"><span>${v===1?"非常不符":v===2?"不太符":v===3?"不确定":v===4?"比较符":"非常符"}</span></label>`).join('')+
+                `</div>`;
+            container.appendChild(div);
+        });
+    }
+
+    // ---------- 7道调查题定义 ----------
+    const surveyQuestions = [
+        { id: "purpose", text: "您进行人格测试的主要目的是什么？", options: ["自我探索", "社交娱乐", "职业规划", "学术研究", "好奇/随便玩玩"] },
+        { id: "helpUseful", text: "您认为人格测试结果对您的自我认知有帮助吗？", options: ["非常有帮助", "有点帮助", "不确定", "帮助不大", "完全没有帮助"] },
+        { id: "mentionTag", text: "您是否会在日常交流中主动提及或使用自己的人格类型标签？", options: ["经常", "有时", "很少", "从不"] },
+        { id: "accurateDesc", text: "您是否认同人格测试结果能够准确描述您的性格？", options: ["非常认同", "比较认同", "不确定", "不太认同", "完全不认同"] },
+        { id: "influence", text: "您是否曾因测试结果而产生心理暗示或行为改变？", options: ["经常", "偶尔", "很少", "从未"] },
+        { id: "stereotypeView", text: "您如何看待网络上关于人格测试的“刻板印象”或“玩梗”现象？", options: ["很有趣", "有点意思但过度解读", "无感", "反感", "其他/说不清"] },
+        { id: "mbti", text: "您的MBTI是什么？", options: ['INTJ','INTP','ENTJ','ENTP','INFJ','INFP','ENFJ','ENFP','ISTJ','ISFJ','ESTJ','ESFJ','ISTP','ISFP','ESTP','ESFP'] }
+    ];
+
+    let surveySelections = {}; // 存储每个题目的选中值
+
+    function renderSurvey() {
+        let container = document.getElementById("surveyContainer");
+        container.innerHTML = "";
+        surveyQuestions.forEach(sq => {
+            let card = document.createElement("div");
+            card.className = "question-item";
+            card.innerHTML = `<div class="question-text"><strong>${sq.text}</strong></div><div class="survey-options" data-qid="${sq.id}"></div>`;
+            let optsDiv = card.querySelector(".survey-options");
+            sq.options.forEach(opt => {
+                let btn = document.createElement("div");
+                btn.className = "opt-btn";
+                btn.innerText = opt;
+                btn.addEventListener("click", () => {
+                    // 同组清除选中
+                    optsDiv.querySelectorAll(".opt-btn").forEach(b => b.classList.remove("selected"));
+                    btn.classList.add("selected");
+                    surveySelections[sq.id] = opt;
+                });
+                optsDiv.appendChild(btn);
+            });
+            container.appendChild(card);
+        });
+    }
+
+    // 收集附加题答案
+    function getSurveyAnswers() {
+        let required = surveyQuestions.map(q => q.id);
+        for(let id of required) {
+            if(!surveySelections[id]) {
+                alert(`请完成调查问题：“${surveyQuestions.find(q=>q.id===id).text}”`);
+                return null;
+            }
+        }
+        return { ...surveySelections };
+    }
+
+    // 大五计算
+    function computeScores(answers) {
+        let dimRaw = { N:0, E:0, O:0, A:0, C:0 };
+        for(let q of QUESTIONS) {
+            let ans = answers[q.id-1];
+            let score = (q.direct === "反") ? reverseScore(ans) : ans;
+            dimRaw[q.dim] += score;
+        }
+        let levels = {};
+        for(let d of ['N','E','O','A','C']) levels[d] = getLevel(dimRaw[d], d);
+        return { scores: dimRaw, levels };
+    }
+
+    // ---------- Firebase 配置（请替换为您自己的项目配置）----------
+    const firebaseConfig = {
+        apiKey: "AIzaSyC2r6lNv6vK5PnYJ-OogQhC-XSqL7-Uu7o",   // 替换成您的真实key
+        authDomain: "personality-test-7c1b2.firebaseapp.com",
+        projectId: "personality-test-7c1b2",
+        storageBucket: "personality-test-7c1b2.appspot.com",
+        messagingSenderId: "1062812345678",
+        appId: "1:1062812345678:web:abcdef123456"
+    };
+    let db, firestoreAvailable = false;
+    try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+        firestoreAvailable = true;
+        console.log("✅ Firebase 已连接");
+    } catch(e) { console.warn("Firebase 初始化失败，数据将存于本地 localStorage", e); firestoreAvailable = false; }
+
+    async function saveResult(record) {
+        if(!firestoreAvailable || !db) {
+            let local = localStorage.getItem("campus_stats") ? JSON.parse(localStorage.getItem("campus_stats")) : [];
+            local.push(record);
+            localStorage.setItem("campus_stats", JSON.stringify(local));
+            return;
+        }
+        try { await db.collection("personality_results").add(record); } catch(err) { console.error("保存失败", err); }
+    }
+
+    async function loadStatsAndDisplay() {
+        let statsDiv = document.getElementById("statsContent");
+        statsDiv.innerHTML = '<div class="loading">加载中...</div>';
+        let resultsList = [];
+        if(!firestoreAvailable || !db) {
+            let raw = localStorage.getItem("campus_stats");
+            if(raw) resultsList = JSON.parse(raw);
+            else resultsList = [];
+            renderStatsUI(resultsList);
+            return;
+        }
+        try {
+            let snapshot = await db.collection("personality_results").get();
+            snapshot.forEach(doc => resultsList.push(doc.data()));
+            renderStatsUI(resultsList);
+        } catch(e) { statsDiv.innerHTML = "<p>统计加载失败，请检查网络或Firebase权限</p>"; }
+    }
+
+    function renderStatsUI(resultsList) {
+        if(!resultsList.length) { document.getElementById("statsContent").innerHTML = '<p>✨ 暂无数据，快成为第一个测试者 ✨</p>'; return; }
+        let total = resultsList.length;
+        let typeCount = {}, dimSums = { N:0, E:0, O:0, A:0, C:0 };
+        resultsList.forEach(r => {
+            if(r.typeName) typeCount[r.typeName] = (typeCount[r.typeName]||0)+1;
+            if(r.dimScores) { dimSums.N += r.dimScores.N; dimSums.E += r.dimScores.E; dimSums.O += r.dimScores.O; dimSums.A += r.dimScores.A; dimSums.C += r.dimScores.C; }
+        });
+        let avgDim = { N:(dimSums.N/total).toFixed(1), E:(dimSums.E/total).toFixed(1), O:(dimSums.O/total).toFixed(1), A:(dimSums.A/total).toFixed(1), C:(dimSums.C/total).toFixed(1) };
+        let topTypes = Object.entries(typeCount).sort((a,b)=>b[1]-a[1]).slice(0,3).map(k=>`${k[0]}(${k[1]})`).join(', ');
+        let html = `<div style="flex:1"><h4>📊 总参与: ${total}</h4><p>🧠 平均维度:<br>N:${avgDim.N} E:${avgDim.E} O:${avgDim.O}<br>A:${avgDim.A} C:${avgDim.C}</p><p>🏷️ 热门类型: ${topTypes}</p></div><div style="flex:1"><canvas id="typeChart" width="300" height="200"></canvas></div>`;
+        document.getElementById("statsContent").innerHTML = html;
+        let ctx = document.getElementById('typeChart')?.getContext('2d');
+        if(ctx && Object.keys(typeCount).length) new Chart(ctx, { type: 'pie', data: { labels: Object.keys(typeCount), datasets: [{ data: Object.values(typeCount), backgroundColor: ['#FFB347','#4F8BC9','#6C9A6C','#E67E22','#9B59B6','#3498DB','#E74C3C','#1ABC9C','#F1C40F','#2C3E50'] }] }, options: { responsive: true } });
+    }
+
+    // 提交主逻辑
+    document.getElementById("submitBtn").addEventListener("click", async () => {
+        // 收集大五答案
+        let answers = [];
+        for(let i=1;i<=40;i++) {
+            let selected = document.querySelector(`input[name="q${i}"]:checked`);
+            if(!selected) { alert(`请完成第 ${i} 题`); return; }
+            answers.push(parseInt(selected.value));
+        }
+        let surveyAns = getSurveyAnswers();
+        if(!surveyAns) return;
+
+        let { scores, levels } = computeScores(answers);
+        let matched = matchPersonality(levels);
+        // 展示报告
+        let reportHtml = `<div class="card result-card"><div style="display:flex; align-items:center; gap:15px;"><i class="${matched.img}" style="font-size: 3rem; color:#f39c12;"></i><div><div class="type-title">${matched.name}</div><div>${matched.desc}</div></div></div><hr><div><strong>🌊 大五维度分</strong><br>神经质N:${scores.N}(${levels.N}) 外向E:${scores.E}(${levels.E}) 开放O:${scores.O}(${levels.O}) 宜人A:${scores.A}(${levels.A}) 尽责C:${scores.C}(${levels.C})</div><div style="margin-top:12px;">✨ 你的校园角色已记录，感谢参与深度调研！</div></div>`;
+        document.getElementById("reportArea").style.display = "block";
+        document.getElementById("reportArea").innerHTML = reportHtml;
+        document.getElementById("reportArea").scrollIntoView({ behavior: "smooth" });
+
+        // 保存到后端（含全部调查数据）
+        let fullRecord = {
+            typeName: matched.name,
+            dimScores: scores,
+            levels: levels,
+            mbti: surveyAns.mbti,
+            purpose: surveyAns.purpose,
+            helpUseful: surveyAns.helpUseful,
+            mentionTag: surveyAns.mentionTag,
+            accurateDesc: surveyAns.accurateDesc,
+            influence: surveyAns.influence,
+            stereotypeView: surveyAns.stereotypeView,
+            timestamp: new Date().toISOString()
+        };
+        await saveResult(fullRecord);
+        loadStatsAndDisplay();
+    });
+
+    renderQuestions();
+    renderSurvey();
+    loadStatsAndDisplay();
+</script>
+</body>
+</html>
